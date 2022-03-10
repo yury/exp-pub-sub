@@ -10,6 +10,7 @@ use tracing_subscriber;
 #[derive(Deserialize)]
 struct Config {
     topic: String,
+    subscription: String,
     google_application_credentials: String,
 }
 
@@ -101,9 +102,9 @@ async fn main() -> Result<(), error::Error> {
 
     let topic = Arc::new(pubsub.topic(config.topic));
 
-    schedule_usage_metering(topic.clone());
+    schedule_usage_metering(topic);
     
-    let subscription = pubsub.subscribe("rust-test".to_string());
+    let subscription = pubsub.subscribe(config.subscription);
     
     debug!("Subscribed to topic with: {}", subscription.name);
     let sub = Arc::new(subscription);
@@ -112,18 +113,7 @@ async fn main() -> Result<(), error::Error> {
     debug!("Cleaning up");
     pubsub.stop();
     debug!("Waiting for current Pull to finish....");
-    while Arc::strong_count(&sub) > 1 {
-
-    }
+    while Arc::strong_count(&sub) > 1 { }
     Ok(())
 }
 
-
-mod tests {
-
-    #[test]
-    fn foo() {
-        println!("nice");
-        assert!(true)
-    }
-}

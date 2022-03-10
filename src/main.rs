@@ -102,8 +102,9 @@ async fn main() -> Result<(), error::Error> {
     let topic = Arc::new(pubsub.topic(config.topic));
 
     schedule_usage_metering(topic.clone());
-
-    let subscription = topic.subscribe().await?;
+    
+    let subscription = pubsub.subscribe("rust-test".to_string());
+    
     debug!("Subscribed to topic with: {}", subscription.name);
     let sub = Arc::new(subscription);
     schedule_pubsub_pull(Arc::clone(&sub));
@@ -113,13 +114,6 @@ async fn main() -> Result<(), error::Error> {
     debug!("Waiting for current Pull to finish....");
     while Arc::strong_count(&sub) > 1 {
 
-    }
-    debug!("Deleting subscription");
-    if let Ok(s) = Arc::try_unwrap(sub) {
-        s.destroy().await?;
-        info!("Successfully deleted subscription");
-    } else {
-        error!("Subscription was still ownded");
     }
     Ok(())
 }

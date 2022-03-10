@@ -1,11 +1,10 @@
 use cloud_pubsub::{error, Topic};
 use cloud_pubsub::{Client, EncodedMessage, FromPubSubMessage, Subscription};
-use serde_derive::{Serialize, Deserialize};
+use serde_derive::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::{signal, task, time};
-use tracing::{info, error, debug};
-use tracing_subscriber;
+use tracing::{debug, error, info};
 
 #[derive(Deserialize)]
 struct Config {
@@ -17,18 +16,19 @@ struct Config {
 #[derive(Debug, Serialize, Deserialize)]
 struct MachineStatsPacket {
     id: u64,
-    secs: u32
+    secs: u32,
 }
 
 impl FromPubSubMessage for MachineStatsPacket {
     fn from(message: EncodedMessage) -> Result<Self, error::Error> {
         match message.decode() {
-            Ok(bytes) => serde_json::from_slice::<MachineStatsPacket>(&bytes).map_err(error::Error::from),
+            Ok(bytes) => {
+                serde_json::from_slice::<MachineStatsPacket>(&bytes).map_err(error::Error::from)
+            }
             Err(e) => Err(error::Error::from(e)),
         }
     }
 }
-
 
 fn schedule_pubsub_pull(subscription: Arc<Subscription>) {
     task::spawn(async move {
@@ -39,7 +39,6 @@ fn schedule_pubsub_pull(subscription: Arc<Subscription>) {
                         match result {
                             Ok(message) => {
                                 info!("recieved {:?}", message);
-                                //////
                                 let subscription = Arc::clone(&subscription);
                                 task::spawn(async move {
                                     subscription.acknowledge_messages(vec![ack_id]).await;
@@ -62,13 +61,16 @@ fn schedule_usage_metering(topic: Arc<Topic>) {
     task::spawn(async move {
         loop {
             interval.tick().await;
-            let p = MachineStatsPacket { id: 1, secs: dur.as_secs() as _ };
+            let p = MachineStatsPacket {
+                id: 1,
+                secs: dur.as_secs() as _,
+            };
             let m = EncodedMessage::new(&p, None);
             match topic.publish_message(m).await {
                 Ok(response) => {
                     info!("{:?}", response);
                 }
-                Err(err) => error!("{}", err)
+                Err(err) => error!("{}", err),
             }
         }
     });
@@ -103,17 +105,16 @@ async fn main() -> Result<(), error::Error> {
     let topic = Arc::new(pubsub.topic(config.topic));
 
     schedule_usage_metering(topic);
-    
+
     let subscription = pubsub.subscribe(config.subscription);
-    
+
     debug!("Subscribed to topic with: {}", subscription.name);
     let sub = Arc::new(subscription);
-    schedule_pubsub_pull(Arc::clone(&sub));
+    schedule_pubsub_pull(sub.clone());
     signal::ctrl_c().await?;
     debug!("Cleaning up");
     pubsub.stop();
     debug!("Waiting for current Pull to finish....");
-    while Arc::strong_count(&sub) > 1 { }
+    while Arc::strong_count(&sub) > 1 {}
     Ok(())
 }
-

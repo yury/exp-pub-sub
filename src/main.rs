@@ -55,7 +55,7 @@ fn schedule_pubsub_pull(subscription: Arc<Subscription>) {
     });
 }
 
-fn schedule_usage_metering(topic: Arc<Topic>) {
+fn schedule_usage_metering(topic: Topic) {
     let dur = Duration::from_secs(40);
     let mut interval = time::interval(dur);
     task::spawn(async move {
@@ -92,7 +92,8 @@ async fn main() -> Result<(), error::Error> {
         Err(e) => panic!("Failed to initialize pubsub: {}", e),
         Ok(mut client) => {
             if let Err(e) = client.refresh_token().await {
-                error!("Failed to get token: {}", e);
+                panic!("Failed to get token: {}", e);
+
             } else {
                 info!("Got fresh token");
             }
@@ -102,7 +103,7 @@ async fn main() -> Result<(), error::Error> {
 
     pubsub.spawn_token_renew(Duration::from_secs(15 * 60));
 
-    let topic = Arc::new(pubsub.topic(config.topic));
+    let topic = pubsub.topic(config.topic);
 
     schedule_usage_metering(topic);
 

@@ -1,0 +1,21 @@
+[package]
+name = "exp-pub-sub"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[profile.release]
+#strip = "debuginfo"
+strip = true
+
+[dependencies]
+
+cloud-pubsub = "0.8.0"
+envy = "0.4"
+tokio =  { version = "1", features = ["macros", "signal"]}
+serde_derive = "1"
+serde_json = "1.0"
+serde = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.2"

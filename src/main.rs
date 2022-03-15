@@ -8,7 +8,7 @@ use tokio::{signal, task, time};
 use tracing::{debug, error, info};
 use worker::MachineStatsPacket;
 
-use crate::worker::{spawn_worker, TopicMessage};
+use crate::worker::TopicMessage;
 
 pub mod worker;
 
@@ -72,27 +72,26 @@ async fn main() -> Result<(), error::Error> {
 
     schedule_usage_metering(topic);
 
-    let ctx = Arc::new(10);
+    async fn worker_fn(
+        ctx: Arc<i32>,
+        msg: MachineStatsPacket,
+    ) -> Result<worker::Next, worker::Error> {
+        println!("{:?}: {:?}", ctx, msg);
+        if msg.id % 5 == 0 {
+            let tm = TopicMessage::Meter(MachineStatsPacket { id: 1, secs: 0 });
+            worker::Next::publish(tm)
+        } else {
+            worker::Next::ack()
+        }
+    }
 
-    let worker_task = spawn_worker(
-        ctx,
-        pubsub.clone(),
-        config.subscription,
-        |cx, msg: MachineStatsPacket| async move {
-            println!("{:?}: {:?}", cx, msg);
-            if msg.id % 5 == 0 {
-                let tm = TopicMessage::Meter(MachineStatsPacket { id: 1, secs: 0 });
-                worker::Next::publish(tm)
-            } else {
-                worker::Next::ack()
-            }
-        },
-    );
+    let ctx = Arc::new(10);
+    let task = worker::spawn(pubsub.clone(), config.subscription, ctx.clone(), worker_fn);
 
     signal::ctrl_c().await?;
     debug!("Cleaning up");
     pubsub.stop();
     debug!("Waiting for current Pull to finish....");
-    worker_task.await.unwrap();
+    task.await.unwrap();
     Ok(())
 }

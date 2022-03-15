@@ -1,4 +1,4 @@
-use std::{future::Future, sync::Arc};
+use std::{future::Future, marker::PhantomData, process::Output, sync::Arc};
 
 use cloud_pubsub::{error, EncodedMessage, FromPubSubMessage};
 use serde_derive::{Deserialize, Serialize};
@@ -81,10 +81,10 @@ pub async fn publish_message(
     Ok(())
 }
 
-pub fn spawn_worker<C, W, M, F>(
-    ctx: C,
-    pubsub: Arc<cloud_pubsub::Client>,
+pub fn spawn<C, W, M, F>(    
+    ps: Arc<cloud_pubsub::Client>,
     sub_name: String,
+    ctx: C,
     worker_fn: W,
 ) -> JoinHandle<()>
 where
@@ -94,8 +94,8 @@ where
     F: Future<Output = Result<Next, Error>> + Send,
 {
     tokio::spawn(async move {
-        let subscription = pubsub.subscribe(sub_name);
-        while pubsub.is_running() {
+        let subscription = ps.subscribe(sub_name);
+        while ps.is_running() {
             let f = subscription.get_messages::<M>().await.unwrap();
             for (result, ack_id) in f {
                 let mut res = match result {
@@ -107,7 +107,7 @@ where
                 };
 
                 if let Ok(Next::Publish(msg)) = res {
-                    res = match publish_message(pubsub.clone(), msg).await {
+                    res = match publish_message(ps.clone(), msg).await {
                         Ok(_) => Next::ack(),
                         Err(e) => Err(e),
                     }

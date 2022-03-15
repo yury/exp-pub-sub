@@ -1,4 +1,4 @@
-use std::{future::Future, marker::PhantomData, process::Output, sync::Arc};
+use std::{future::Future, sync::Arc};
 
 use cloud_pubsub::{error, EncodedMessage, FromPubSubMessage};
 use serde_derive::{Deserialize, Serialize};
@@ -31,12 +31,7 @@ pub struct MachineStatsPacket {
 
 impl FromPubSubMessage for MachineStatsPacket {
     fn from(message: EncodedMessage) -> Result<Self, error::Error> {
-        match message.decode() {
-            Ok(bytes) => {
-                serde_json::from_slice::<MachineStatsPacket>(&bytes).map_err(error::Error::from)
-            }
-            Err(e) => Err(error::Error::from(e)),
-        }
+        serde_json::from_slice(&message.decode()?).map_err(error::Error::from)
     }
 }
 

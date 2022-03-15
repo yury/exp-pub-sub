@@ -1,10 +1,33 @@
+use std::sync::Arc;
+use std::time::Duration;
+
 use cloud_pubsub::{error, Topic};
 use cloud_pubsub::{Client, EncodedMessage, FromPubSubMessage, Subscription};
 use serde_derive::{Deserialize, Serialize};
-use std::sync::Arc;
-use std::time::Duration;
+use worker::Worker;
 use tokio::{signal, task, time};
 use tracing::{debug, error, info};
+use tower::{self, Service, ServiceExt};
+
+use crate::worker::spawn_worker;
+
+pub mod worker;
+
+async fn handler(ctx: Arc<u32>, message: String) -> Result<(), ()> {
+    println!("{:?}:{:?}", ctx, message);
+    Ok(())   
+}
+
+pub async fn foo() {
+    // let worker = Worker::new(1, |a: u32, m: String| async move {
+    //     println!("{:?}{:?}:{}", a, m, "Nice");
+    //     Ok::<(), ()>(())
+    // });
+
+    let worker = Worker::new(Arc::new(1), handler);
+
+    let f = worker.oneshot("nic".to_string()).await.expect("nice");
+}
 
 #[derive(Deserialize)]
 struct Config {
@@ -59,10 +82,12 @@ fn schedule_usage_metering(topic: Topic) {
     let dur = Duration::from_secs(40);
     let mut interval = time::interval(dur);
     task::spawn(async move {
+        let mut x = 0;
         loop {
             interval.tick().await;
+            x += 1;
             let p = MachineStatsPacket {
-                id: 1,
+                id: x,
                 secs: dur.as_secs() as _,
             };
             let m = EncodedMessage::new(&p, None);
@@ -111,11 +136,19 @@ async fn main() -> Result<(), error::Error> {
 
     debug!("Subscribed to topic with: {}", subscription.name);
     let sub = Arc::new(subscription);
-    schedule_pubsub_pull(sub.clone());
+    
+    let ctx = Arc::new(10);
+
+    let worker_task = spawn_worker(ctx, sub.clone(), |cx, m: MachineStatsPacket| async move {
+        println!("{:?}: {:?}", cx, m);
+        Ok(())
+    });
+
+
     signal::ctrl_c().await?;
     debug!("Cleaning up");
     pubsub.stop();
     debug!("Waiting for current Pull to finish....");
-    while Arc::strong_count(&sub) > 1 {}
+    worker_task.await.unwrap();
     Ok(())
 }

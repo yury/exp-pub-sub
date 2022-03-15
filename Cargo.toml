@@ -11,6 +11,7 @@ strip = true
 
 [dependencies]
 
+tower = { version = "0.4", features = ["util"] }
 cloud-pubsub = "0.8.0"
 envy = "0.4"
 tokio =  { version = "1", features = ["macros", "signal"]}

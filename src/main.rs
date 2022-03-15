@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use cloud_pubsub::{error, Topic};
 use cloud_pubsub::{Client, EncodedMessage};
-use serde_derive::{Deserialize};
+use serde_derive::Deserialize;
 use tokio::{signal, task, time};
 use tracing::{debug, error, info};
 use worker::MachineStatsPacket;
@@ -12,14 +12,12 @@ use crate::worker::{spawn_worker, TopicMessage};
 
 pub mod worker;
 
-
 #[derive(Deserialize)]
 struct Config {
     topic: String,
     subscription: String,
     google_application_credentials: String,
 }
-
 
 fn schedule_usage_metering(topic: Topic) {
     let dur = Duration::from_secs(2);
@@ -61,7 +59,6 @@ async fn main() -> Result<(), error::Error> {
         Ok(mut client) => {
             if let Err(e) = client.refresh_token().await {
                 panic!("Failed to get token: {}", e);
-
             } else {
                 info!("Got fresh token");
             }
@@ -77,17 +74,20 @@ async fn main() -> Result<(), error::Error> {
 
     let ctx = Arc::new(10);
 
-    let worker_task = spawn_worker(ctx, pubsub.clone(), config.subscription, |cx, m: MachineStatsPacket| async move {
-        println!("{:?}: {:?}", cx, m);
-        if m.id % 5 == 0 {
-            let tm = TopicMessage::Meter(MachineStatsPacket{ id: 1,  secs: 0 });
-            worker::Next::publish(tm)
-        } else {
-            worker::Next::ack()
-        }
-        // worker::Next::publish(TopicMessage::Machines(...))
-    });
-
+    let worker_task = spawn_worker(
+        ctx,
+        pubsub.clone(),
+        config.subscription,
+        |cx, msg: MachineStatsPacket| async move {
+            println!("{:?}: {:?}", cx, msg);
+            if msg.id % 5 == 0 {
+                let tm = TopicMessage::Meter(MachineStatsPacket { id: 1, secs: 0 });
+                worker::Next::publish(tm)
+            } else {
+                worker::Next::ack()
+            }
+        },
+    );
 
     signal::ctrl_c().await?;
     debug!("Cleaning up");

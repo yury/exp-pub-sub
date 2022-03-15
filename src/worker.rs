@@ -1,17 +1,14 @@
-use std::{
-    future::Future,
-    sync::Arc,
-};
+use std::{future::Future, sync::Arc};
 
-use cloud_pubsub::{FromPubSubMessage, EncodedMessage, error};
+use cloud_pubsub::{error, EncodedMessage, FromPubSubMessage};
 use serde_derive::{Deserialize, Serialize};
 use tokio::task::JoinHandle;
-use tracing::{error};
+use tracing::error;
 
 #[derive(Debug)]
 pub enum Error {
     IO(std::io::Error),
-    PubSub(cloud_pubsub::error::Error)
+    PubSub(cloud_pubsub::error::Error),
 }
 
 impl From<std::io::Error> for Error {
@@ -20,7 +17,7 @@ impl From<std::io::Error> for Error {
     }
 }
 
-impl  From<cloud_pubsub::error::Error> for Error {
+impl From<cloud_pubsub::error::Error> for Error {
     fn from(e: cloud_pubsub::error::Error) -> Self {
         Error::PubSub(e)
     }
@@ -46,7 +43,7 @@ impl FromPubSubMessage for MachineStatsPacket {
 #[derive(Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum TopicMessage {
-    Meter(MachineStatsPacket)
+    Meter(MachineStatsPacket),
 }
 
 impl TopicMessage {
@@ -55,18 +52,17 @@ impl TopicMessage {
     }
 }
 
-
 pub enum Next {
     Ack,
-    Publish(TopicMessage)
+    Publish(TopicMessage),
 }
 
 impl Next {
-    pub fn ack() -> Result<Next, Error>{
+    pub fn ack() -> Result<Next, Error> {
         Ok(Self::Ack)
     }
 
-    pub fn publish(to: TopicMessage) -> Result<Next, Error>{
+    pub fn publish(to: TopicMessage) -> Result<Next, Error> {
         Ok(Self::Publish(to))
     }
 
@@ -75,24 +71,32 @@ impl Next {
     }
 }
 
-pub async fn publish_message(pubsub: Arc<cloud_pubsub::Client>, msg: TopicMessage) -> Result<(), Error> {
+pub async fn publish_message(
+    pubsub: Arc<cloud_pubsub::Client>,
+    msg: TopicMessage,
+) -> Result<(), Error> {
     let topic = pubsub.topic(msg.topic());
     let m = EncodedMessage::new(&msg, None);
     _ = topic.publish_message(m).await?;
     Ok(())
 }
 
-pub fn spawn_worker<C, W, M, F>(ctx: C, pubsub: Arc<cloud_pubsub::Client>, sub_name: String, worker_fn: W) -> JoinHandle<()>
+pub fn spawn_worker<C, W, M, F>(
+    ctx: C,
+    pubsub: Arc<cloud_pubsub::Client>,
+    sub_name: String,
+    worker_fn: W,
+) -> JoinHandle<()>
 where
     C: Clone + Send + Sync + 'static,
     M: FromPubSubMessage + Send,
     W: Fn(C, M) -> F + Sync + Send + 'static,
-    F: Future<Output = Result<Next, Error>> + Send
+    F: Future<Output = Result<Next, Error>> + Send,
 {
     tokio::spawn(async move {
         let subscription = pubsub.subscribe(sub_name);
         while pubsub.is_running() {
-            let f = subscription.get_messages::<M>().await.unwrap(); 
+            let f = subscription.get_messages::<M>().await.unwrap();
             for (result, ack_id) in f {
                 let mut res = match result {
                     Ok(message) => worker_fn(ctx.clone(), message).await,
@@ -105,8 +109,8 @@ where
                 if let Ok(Next::Publish(msg)) = res {
                     res = match publish_message(pubsub.clone(), msg).await {
                         Ok(_) => Next::ack(),
-                        Err(e) => Err(e)
-                    }                    
+                        Err(e) => Err(e),
+                    }
                 }
 
                 match res {
@@ -114,18 +118,16 @@ where
                     Ok(Next::Publish(_)) => panic!("We should handle it before"),
                     Err(e) => {
                         error!("Worker failed: {:?}", e);
-                    } 
+                    }
                 }
             }
         }
     })
 }
 
-
 #[cfg(test)]
 mod tests {
 
     #[tokio::test]
-    async fn test_with_worker_fn() {
-    }
+    async fn test_with_worker_fn() {}
 }
